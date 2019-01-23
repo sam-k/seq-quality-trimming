@@ -14,24 +14,27 @@ from Bio import SeqIO  # Biopython's parser
 
 """ set up environment """
 
-wd = os.path.expanduser("~/Projects/David Lab/Ind study projects/Seq trimming/Data/")
-filenames = ["13E_001_BT-12S-fwd_BP005_F05",
+WD = os.path.expanduser("~/Projects/David Lab/Ind study projects/Seq trimming/Data/")
+FILENAMES = ["13E_001_BT-12S-fwd_BP005_F05",
              "13E_002_BT-12S-rev_BP006_G05",
              "13E_003_P-12S-fwd_BP005_H05",
              "13E_004_P-12S-rev_BP006_A06"]
 
-names = []  # str: [(forward_seq_file, reverse_seq_file)]
-for _i in range(0, len(filenames), 2):
-    names.append((filenames[_i], filenames[_i+1]))
-seq_objects = [(SeqIO.read(wd + fwd + ".ab1", "abi"),
-                SeqIO.read(wd + rev + ".ab1", "abi")) for (fwd, rev) in names]
-
-# Paired forward/reverse sequences.
-seqs = [(str(fwd.seq),
-         str(rev.seq)) for (fwd, rev) in seq_objects]
-# Quality values at each nucleotide. Parallel in structure with seqs list.
-quals = [([x for x in fwd.letter_annotations["phred_quality"]],
-          [x for x in rev.letter_annotations["phred_quality"]]) for (fwd, rev) in seq_objects]
+# All paired forward/reverse sequences.
+# Each dict key is paired with a 2-tuples, corresponding to fwd/rev.
+# str: [{names, reads, seqs, quals, trimmed_seqs}]
+sequences = []
+for _i in range(0, len(FILENAMES), 2):
+    names = (FILENAMES[_i], FILENAMES[_i+1])
+    reads = (SeqIO.read(WD + names[0] + ".ab1", "abi"),
+             SeqIO.read(WD + names[1] + ".ab1", "abi"))
+    seqs = (str(reads[0].seq), str(reads[1].seq))
+    quals = ([x for x in reads[0].letter_annotations["phred_quality"]],
+             [x for x in reads[1].letter_annotations["phred_quality"]])
+    sequences.append({"names" : names,
+                      "reads" : reads,
+                      "seqs"  : seqs,
+                      "quals" : quals})
 
 
 """ trim by quality scores """
@@ -74,11 +77,9 @@ def trim_seq(seq, quality_scores, name=None, threshold=None, gap_penalty=None):
              min(trimmed_scores), max(trimmed_scores), threshold, gap_penalty))
     return trimmed_seq
 
-# Sequences with low-quality ends removed.
-trimmed_seqs = []
-for _i in range(len(seqs)):
-    trimmed_seqs.append((trim_seq(seqs[_i][0], quals[_i][0], names[_i][0]),
-                         trim_seq(seqs[_i][1], quals[_i][1], names[_i][1])))
+for _sq in sequences:
+    _sq["trimmed_seqs"] = (trim_seq(_sq["seqs"][0], _sq["quals"][0], _sq["names"][0]),
+                           trim_seq(_sq["seqs"][1], _sq["quals"][1], _sq["names"][1]))
 
 
 """ merge forward/backward sequences """
