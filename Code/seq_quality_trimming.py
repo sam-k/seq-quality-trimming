@@ -14,22 +14,35 @@ from Bio import SeqIO  # Biopython's parser
 
 """ set up environment """
 
-WD = os.path.expanduser("~/Projects/David Lab/Ind study projects/Seq trimming/")
-ab1_fwd = SeqIO.read(WD+"Data/13E_001_BT-12S-fwd_BP005_F05.ab1", "abi")
-ab1_rev = SeqIO.read(WD+"Data/13E_002_BT-12S-rev_BP006_G05.ab1", "abi")
+wd = os.path.expanduser("~/Projects/David Lab/Ind study projects/Seq trimming/Data/")
+filenames = ["13E_001_BT-12S-fwd_BP005_F05",
+             "13E_002_BT-12S-rev_BP006_G05",
+             "13E_003_P-12S-fwd_BP005_H05",
+             "13E_004_P-12S-rev_BP006_A06"]
 
-seq_fwd = str(ab1_fwd.seq)
-seq_rev = str(ab1_rev.seq)
-qual_fwd = [x for x in ab1_fwd.letter_annotations["phred_quality"]]
-qual_rev = [x for x in ab1_rev.letter_annotations["phred_quality"]]
+names = []  # str: [(forward_seq_file, reverse_seq_file)]
+for _i in range(0, len(filenames), 2):
+    names.append((filenames[_i], filenames[_i+1]))
+seq_objects = [(SeqIO.read(wd + fwd + ".ab1", "abi"),
+                SeqIO.read(wd + rev + ".ab1", "abi")) for (fwd, rev) in names]
+
+# Paired forward/reverse sequences.
+seqs = [(str(fwd.seq),
+         str(rev.seq)) for (fwd, rev) in seq_objects]
+# Quality values at each nucleotide. Parallel in structure with seqs list.
+quals = [([x for x in fwd.letter_annotations["phred_quality"]],
+          [x for x in rev.letter_annotations["phred_quality"]]) for (fwd, rev) in seq_objects]
 
 
 """ trim by quality scores """
 
 # Trim sequence by quality scores, using Kadane's algorithm.
-# Threshold is lowest acceptable quality score.
+# Threshold is lowest acceptable quality score, used to normalize the scores.
 # Gap penalty is penalty per nt of including a low-quality base.
-def trim_seq(seq, quality_scores, threshold=0, gap_penalty=0):
+def trim_seq(seq, quality_scores, name=None, threshold=None, gap_penalty=None):
+    if threshold is None:
+        threshold = np.average(quality_scores) * 0.9
+        gap_penalty = threshold * 3
     scores = [(x-threshold if x > threshold else x-threshold-gap_penalty) for x in quality_scores]
     
     max_to_here = 0
@@ -52,10 +65,21 @@ def trim_seq(seq, quality_scores, threshold=0, gap_penalty=0):
     max_ind = (ind_to_here if max_to_here > max_so_far else ind_so_far)
     trimmed_seq    = seq[max_ind[0]:max_ind[1]+1]
     trimmed_scores = quality_scores[max_ind[0]:max_ind[1]+1]
-    print("Trimmed seq: %d nt (%d-%d), Avg score: %.2f (std %.2f, rng %d-%d)"
-          % (len(trimmed_seq), max_ind[0]+1, max_ind[1]+1,
-             np.average(trimmed_scores), np.std(trimmed_scores), min(trimmed_scores), max(trimmed_scores)))
+    if name is not None:
+        print(name)
+    print("Trimmed seq: %d nt (%d-%d, %d%%)"
+          % (len(trimmed_seq), max_ind[0]+1, max_ind[1]+1, 100*len(trimmed_seq)/len(seq)))
+    print("Avg score: %.2f (std %.2f, rng %d-%d, >=%d, -%d)\n"
+          % (np.average(trimmed_scores), np.std(trimmed_scores),
+             min(trimmed_scores), max(trimmed_scores), threshold, gap_penalty))
     return trimmed_seq
 
-trimmed_seq_fwd = trim_seq(seq_fwd, qual_fwd, 40, 100)
-trimmed_seq_rev = trim_seq(seq_rev, qual_rev, 40, 100)
+# Sequences with low-quality ends removed.
+trimmed_seqs = []
+for _i in range(len(seqs)):
+    trimmed_seqs.append((trim_seq(seqs[_i][0], quals[_i][0], names[_i][0]),
+                         trim_seq(seqs[_i][1], quals[_i][1], names[_i][1])))
+
+
+""" merge forward/backward sequences """
+
