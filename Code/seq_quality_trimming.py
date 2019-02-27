@@ -121,11 +121,12 @@ for _sq in sequences:
 def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, ind_fwd=None, ind_rev=None,
                match=None, mismatch=None, gap_penalty=None):
     # Build dictionary of scores for aligning bases
-    dna_bases = ["A","T","C","G"]
+    dna_bases = ["A","T","C","G","N"]
     score_dict = {}
     for i in range(len(dna_bases)):
         for j in range(len(dna_bases)):
             score_dict[dna_bases[i]+dna_bases[j]] = match if i==j else mismatch
+    score_dict["NN"] = mismatch
     
     # Initialize dynamic programming and traceback tables
     LEFT, DIAG, UP = range(3)   # define pointers: 0==Left, 1==Diagonal, 2==Up
@@ -170,9 +171,12 @@ def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, ind_fwd=None, ind_rev=Non
             fwd_align = fwd[max_i-1] + fwd_align
             max_i -= 1
     matches = 0
+    indels = 0
     for i in range(len(fwd_align)):
-        if(fwd_align[i]==rev_align[i]):
+        if fwd_align[i]==rev_align[i]:
             matches += 1
+        elif fwd_align[i]=="-" or rev_align[i]=="-":
+            indels += 1
     
     # Merge forward, aligned overlap, and reverse, and compile stats
     merged_seq = ""
@@ -205,10 +209,15 @@ def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, ind_fwd=None, ind_rev=Non
     
     if name_fwd is not None and name_rev is not None:
         print(name_fwd + " + " + name_rev)
-    print("Merged seq: %d nt (%s)" % (len(merged_seq), merged_nts))
-    print("Overlap: %d nt (%.1f%% match, discarded fwd %d nt, rev %d nt)\n"
-          % (max_back_index[0]-max_front_index[0]+1, 100*matches/len(fwd_align),
-             discarded_nts[0], discarded_nts[1]))
+    overlap_len = max_back_index[0]-max_front_index[0]+1
+    if overlap_len <= discarded_nts[0] or overlap_len <= discarded_nts[1]:
+        print("Reads may not overlap or be too low quality. (%d nt, lost %d fwd/%d rev)\n"
+              % (max_back_index[0]-max_front_index[0]+1, discarded_nts[0], discarded_nts[1]))
+    else:
+        print("Merged seq: %d nt (%s)" % (len(merged_seq), merged_nts))
+        print("Overlap: %d nt (%.1f%% match, %d indels, lost %d fwd/%d rev)\n"
+              % (max_back_index[0]-max_front_index[0]+1, 100*matches/len(fwd_align),
+                 indels, discarded_nts[0], discarded_nts[1]))
     return merged_seq
 
 print("================== MERGING SEQUENCES ===================")
