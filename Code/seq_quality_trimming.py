@@ -36,12 +36,12 @@ FILENAMES = ["13E_001_BT-12S-fwd_BP005_F05",
              "15C_015_Rmicrosporus1050_NS7_G07",
              "15C_016_Rmicrosporus1050_ITS4_H07"]
 
-DNA_BASES = {"A":"T", "T":"A", "C":"G", "G":"C", "N":"N"}
+DNA_COMP = {"A":"T", "T":"A", "C":"G", "G":"C", "N":"N"}
 # Find the reverse complement of a DNA sequence.
 def rev_cmp(seq):
     revcmp_seq = ""
     for c in reversed(seq):
-        revcmp_seq += DNA_BASES[c]
+        revcmp_seq += DNA_COMP[c]
     return revcmp_seq
 
 # All paired forward/reverse sequences.
@@ -99,24 +99,27 @@ def trim_seq(seq, quality_scores, name=None, cutoff=None, gap_penalty=None):
         print(name)
     print("Trimmed seq: %d nt (%d-%d, %d%%)"
           % (len(trimmed_seq), max_ind[0]+1, max_ind[1]+1, 100*len(trimmed_seq)/len(seq)))
-    print("Avg score: %.2f (std %.2f, rng %d-%d, >=%d, -%d)\n"
+    print("Avg score: %.2f (std %.2f, rng %d-%d, >=%d, %d)\n"
           % (np.average(trimmed_scores), np.std(trimmed_scores),
              min(trimmed_scores), max(trimmed_scores), cutoff, gap_penalty))
-    return trimmed_seq
+    return trimmed_seq, max_ind
 
 print("================== TRIMMING SEQUENCES ==================")
 
 for _sq in sequences:
-    _sq["trimmed_seqs"] = (trim_seq(_sq["seqs"][0], _sq["quals"][0], _sq["names"][0]),
-                           trim_seq(_sq["seqs"][1], _sq["quals"][1], _sq["names"][1]))
+    _fwd_trim, _fwd_ind = trim_seq(_sq["seqs"][0], _sq["quals"][0], _sq["names"][0])
+    _rev_trim, _rev_ind = trim_seq(_sq["seqs"][1], _sq["quals"][1], _sq["names"][1])
+    _sq["trimmed_seqs"] = (_fwd_trim, _rev_trim)
+    _sq["trim_indices"] = (_fwd_ind, _rev_ind)
 
 
 
 """ merge forward/reverse sequences """
 
-# Merge forward and reverse reads, using the Smith-Waterman algorithm.\
+# Merge forward and reverse reads, using the Smith-Waterman algorithm.
 # Different scores are assigned for matches, mismatches, and gaps in the alignment.
-def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, match=None, mismatch=None, gap_penalty=None):
+def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, ind_fwd=None, ind_rev=None,
+               match=None, mismatch=None, gap_penalty=None):
     # Build dictionary of scores for aligning bases
     dna_bases = ["A","T","C","G"]
     score_dict = {}
@@ -149,9 +152,6 @@ def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, match=None, mismatch=None
                     max_align_score = max_score
                     max_back_index = (i, j)
     
-    # Merge forward, aligned middle, and reverse
-    merged_seq = fwd[:max_back_index[0]] + rev[max_back_index[1]:]
-    
     # Traceback
     max_i, max_j = max_back_index
     max_front_index = (0, 0)
@@ -174,14 +174,41 @@ def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, match=None, mismatch=None
         if(fwd_align[i]==rev_align[i]):
             matches += 1
     
+    # Merge forward, aligned overlap, and reverse, and compile stats
+    merged_seq = ""
+    merged_nts = ""
+    discarded_nts = [0, 0]
+    if max_front_index[0] > max_front_index[1]:
+        merged_seq += fwd[:max_front_index[0]]
+        merged_nts += ("fwd %d-%d, "
+                       % (ind_fwd[0], ind_fwd[0]+max_front_index[0]-1))
+        discarded_nts[1] += max_front_index[1]-1
+    else:
+        merged_seq += rev[:max_front_index[1]]
+        merged_nts += ("rev %d-%d, "
+                       % (ind_rev[0], ind_rev[0]+max_front_index[1]-1))
+        discarded_nts[0] += max_front_index[0]-1
+    merged_seq += fwd[max_front_index[0]:max_back_index[0]]
+    merged_nts += ("fwd %d-%d/rev %d-%d, "
+                   % (ind_fwd[0]+max_front_index[0], ind_fwd[0]+max_back_index[0],
+                      ind_rev[0]+max_front_index[1], ind_rev[0]+max_back_index[1]))
+    if len(fwd)-max_back_index[0] < len(rev)-max_back_index[1]:
+        merged_seq += rev[max_back_index[1]:]
+        merged_nts += ("rev %d-%d"
+                       % (ind_rev[0]+max_back_index[1]+1, ind_rev[1]+1))
+        discarded_nts[0] += len(fwd)-max_back_index[0]
+    else:
+        merged_seq += fwd[max_back_index[0]:]
+        merged_nts += ("fwd %d-%d"
+                       % (ind_fwd[0]+max_back_index[0]+1, ind_fwd[1]+1))
+        discarded_nts[1] += len(rev)-max_back_index[1]
+    
     if name_fwd is not None and name_rev is not None:
         print(name_fwd + " + " + name_rev)
-    print("Merged seq: %d nt (overlap %d-%d trim_fwd, %d-%d trim_rev)"
-          % (len(merged_seq), max_front_index[0]+1, max_back_index[0]+1,
-             max_front_index[1]+1, max_back_index[1]+1))
-    print("Overlap: %d nt (%.2f%% match)\n"
-          % (max_back_index[0]-max_front_index[0]+1,
-             100*matches/len(fwd_align)))
+    print("Merged seq: %d nt (%s)" % (len(merged_seq), merged_nts))
+    print("Overlap: %d nt (%.1f%% match, discarded fwd %d nt, rev %d nt)\n"
+          % (max_back_index[0]-max_front_index[0]+1, 100*matches/len(fwd_align),
+             discarded_nts[0], discarded_nts[1]))
     return merged_seq
 
 print("================== MERGING SEQUENCES ===================")
@@ -189,4 +216,5 @@ print("================== MERGING SEQUENCES ===================")
 for _sq in sequences:
     _sq["merged_seq"] = merge_seqs(_sq["trimmed_seqs"][0], _sq["trimmed_seqs"][1],
                                    _sq["names"][0], _sq["names"][1],
+                                   _sq["trim_indices"][0], _sq["trim_indices"][1],
                                    2, -7, -7)   # arbitrary scores, seems to work
