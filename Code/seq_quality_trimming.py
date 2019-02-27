@@ -9,7 +9,13 @@ DNA sequence
 
 import numpy as np
 import os
-from Bio import SeqIO  # Biopython's parser
+
+# Biopython
+from Bio import SeqIO
+from Bio.Alphabet import IUPAC
+from Bio.Blast import NCBIWWW, NCBIXML
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 
 
 """ set up environment """
@@ -34,7 +40,7 @@ FILENAMES = ["13E_001_BT-12S-fwd_BP005_F05",
              "15C_013_Rmicrosporus900_NS7_E07",
              "15C_014_Rmicrosporus900_ITS4_F07",
              "15C_015_Rmicrosporus1050_NS7_G07",
-             "15C_016_Rmicrosporus1050_ITS4_H07"]
+             "15C_016_Rmicrosporus1050_ITS4_H07"]   # order by fwd/rev pairs
 
 DNA_COMP = {"A":"T", "T":"A", "C":"G", "G":"C", "N":"N"}
 # Find the reverse complement of a DNA sequence.
@@ -56,13 +62,14 @@ for _i in range(0, len(FILENAMES), 2):
     _quals = ([x for x in _reads[0].letter_annotations["phred_quality"]],
               [x for x in _reads[1].letter_annotations["phred_quality"]][::-1])
     sequences.append({"names" : _names,
-                      "reads" : _reads,
                       "seqs"  : _seqs,
                       "quals" : _quals})
 
 
     
 """ trim by quality scores """
+
+print("================== TRIMMING SEQUENCES ==================")
 
 # Trim sequence by quality scores, using Kadane's algorithm.
 # Cutoff is lowest acceptable quality score, used to normalize the scores around 0.
@@ -104,8 +111,6 @@ def trim_seq(seq, quality_scores, name=None, cutoff=None, gap_penalty=None):
              min(trimmed_scores), max(trimmed_scores), cutoff, gap_penalty))
     return trimmed_seq, max_ind
 
-print("================== TRIMMING SEQUENCES ==================")
-
 for _sq in sequences:
     _fwd_trim, _fwd_ind = trim_seq(_sq["seqs"][0], _sq["quals"][0], _sq["names"][0])
     _rev_trim, _rev_ind = trim_seq(_sq["seqs"][1], _sq["quals"][1], _sq["names"][1])
@@ -115,6 +120,8 @@ for _sq in sequences:
 
 
 """ merge forward/reverse sequences """
+
+print("================== MERGING SEQUENCES ===================")
 
 # Merge forward and reverse reads, using the Smith-Waterman algorithm.
 # Different scores are assigned for matches, mismatches, and gaps in the alignment.
@@ -211,6 +218,7 @@ def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, ind_fwd=None, ind_rev=Non
         print(name_fwd + " + " + name_rev)
     overlap_len = max_back_index[0]-max_front_index[0]+1
     if overlap_len <= discarded_nts[0] or overlap_len <= discarded_nts[1]:
+        merged_seq = None
         print("Reads may not overlap or be too low quality. (%d nt, lost %d fwd/%d rev)\n"
               % (max_back_index[0]-max_front_index[0]+1, discarded_nts[0], discarded_nts[1]))
     else:
@@ -220,10 +228,50 @@ def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, ind_fwd=None, ind_rev=Non
                  indels, discarded_nts[0], discarded_nts[1]))
     return merged_seq
 
-print("================== MERGING SEQUENCES ===================")
-
 for _sq in sequences:
     _sq["merged_seq"] = merge_seqs(_sq["trimmed_seqs"][0], _sq["trimmed_seqs"][1],
                                    _sq["names"][0], _sq["names"][1],
                                    _sq["trim_indices"][0], _sq["trim_indices"][1],
                                    2, -7, -7)   # arbitrary scores, seems to work
+
+
+
+""" BLAST merged sequence """
+
+print("================== BLASTING SEQUENCES ==================")
+
+# Build FASTA file for querying BLAST
+seq_records = []
+for _sq in sequences:
+    if _sq["merged_seq"] is None:
+        for _k in range(2):
+            seq_records.append(SeqRecord(Seq(_sq["trimmed_seqs"][_k], IUPAC.IUPACAmbiguousDNA()),
+                                         id=_sq["names"][_k], description="unmerged"))
+    else:
+        seq_records.append(SeqRecord(Seq(_sq["merged_seq"], IUPAC.IUPACAmbiguousDNA()),
+                                     id=", ".join(_sq["names"]), description="merged"))
+SeqIO.write(seq_records, "merged_seqs.fasta", "fasta")
+
+# BLAST reads and parse output
+blast_records = NCBIXML.parse(NCBIWWW.qblast("blastn", "nt", open("merged_seqs.fasta").read()))
+_k = 0.0
+for _record in blast_records:
+    if _record.query.endswith("unmerged"):
+        if "blast" not in sequences[int(_k)]:
+            sequences[int(_k)]["blast"] = []
+            sequences[int(_k)]["blast_e"] = []
+        sequences[int(_k)]["blast"].append(_record.descriptions[0].title)
+        sequences[int(_k)]["blast_e"].append(_record.descriptions[0].e)
+        _k += 0.5
+    else:
+        sequences[int(_k)]["blast"] = _record.descriptions[0].title
+        sequences[int(_k)]["blast_e"] = _record.descriptions[0].e
+        _k += 1
+
+for _sq in sequences:
+    print(", ".join(_sq["names"]) + (" (%smerged)" % ("un" if _sq["merged_seq"] is None else "")))
+    if type(_sq["blast"]) is list:
+        print("BLAST fwd: %s (e=%.1f)" % (_sq["blast"][0], _sq["blast_e"][0]))
+        print("BLAST rev: %s (e=%.1f)\n" % (_sq["blast"][1], _sq["blast_e"][1]))
+    else:
+        print("BLAST: %s (e=%.1f)\n" % (_sq["blast"], _sq["blast_e"]))
