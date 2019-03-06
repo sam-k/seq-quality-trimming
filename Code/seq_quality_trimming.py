@@ -321,27 +321,27 @@ for _sq in sequences:
                                    2, -7, -7)   # arbitrary scores, seems to work
 write_fasta(sequences, MERGED_FP, "merged")
 
-## BLAST merged reads and parse output
-#print("================== BLASTING SEQUENCES ==================")
-#blast_records = blast_seqs(MERGED_FP)
-#_k = 0.0
-#for _record in blast_records:
-#    if _record.query.endswith("(unmerged)"):
-#        if "blast" not in sequences[int(_k)]:
-#            sequences[int(_k)]["blast"] = []
-#            sequences[int(_k)]["blast_e"] = []
-#        sequences[int(_k)]["blast"].append(_record.descriptions[0].title)
-#        sequences[int(_k)]["blast_e"].append(_record.descriptions[0].e)
-#        _k += 0.5
-#    else:
-#        sequences[int(_k)]["blast"] = _record.descriptions[0].title
-#        sequences[int(_k)]["blast_e"] = _record.descriptions[0].e
-#        _k += 1
-#for _sq in sequences:
-#    print("{} ({}merged)".format(
-#            ", ".join(_sq["names"]), "un" if _sq["merged_seq"] is None else ""))
-#    if type(_sq["blast"]) is list:
-#        print("BLAST fwd: {} (e={:.1f})"  .format(_sq["blast"][0], _sq["blast_e"][0]))
-#        print("BLAST rev: {} (e={:.1f})\n".format(_sq["blast"][1], _sq["blast_e"][1]))
-#    else:
-#        print("BLAST: {} (e={:.1f})\n".format(_sq["blast"], _sq["blast_e"]))
+# BLAST merged reads and parse output
+print("================== BLASTING SEQUENCES ==================")
+blast_records = blast_seqs(MERGED_FP)
+_k = 0.0
+for _record in blast_records:
+    if _record.query.endswith("(unmerged)"):
+        if "blast" not in sequences[int(_k)]:
+            sequences[int(_k)]["blast"] = []
+            sequences[int(_k)]["blast_e"] = []
+        sequences[int(_k)]["blast"].append(_record.descriptions[0].title)
+        sequences[int(_k)]["blast_e"].append(_record.descriptions[0].e)
+        _k += 0.5
+    else:
+        sequences[int(_k)]["blast"] = _record.descriptions[0].title
+        sequences[int(_k)]["blast_e"] = _record.descriptions[0].e
+        _k += 1
+for _sq in sequences:
+    print("{} ({}merged)".format(
+            ", ".join(_sq["names"]), "un" if _sq["merged_seq"] is None else ""))
+    if type(_sq["blast"]) is list:
+        print("BLAST fwd: {} (e={:.1f})"  .format(_sq["blast"][0], _sq["blast_e"][0]))
+        print("BLAST rev: {} (e={:.1f})\n".format(_sq["blast"][1], _sq["blast_e"][1]))
+    else:
+        print("BLAST: {} (e={:.1f})\n".format(_sq["blast"], _sq["blast_e"]))
