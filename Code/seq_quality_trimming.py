@@ -63,9 +63,9 @@ def import_seqs(wd, filenames):
     sequences = []
     for i in range(0, len(filenames), 2):
         names = (filenames[i], filenames[i+1])
-        reads = (SeqIO.read(wd + filenames[0] + ".ab1", "abi"),
-                 SeqIO.read(wd + filenames[1] + ".ab1", "abi"))
-        seqs = (str(reads[0].seq), rev_cmp(str(reads[1].seq)))
+        reads = (SeqIO.read(wd + filenames[i] + ".ab1", "abi"),
+                 SeqIO.read(wd + filenames[i+1] + ".ab1", "abi"))
+        seqs  = (str(reads[0].seq), rev_cmp(str(reads[1].seq)))
         quals = ([x for x in reads[0].letter_annotations["phred_quality"]],
                   [x for x in reads[1].letter_annotations["phred_quality"]][::-1])
         sequences.append({"names":names, "seqs":seqs, "quals":quals})
@@ -304,9 +304,9 @@ write_fasta(sequences, IMPORTED_FP, "original")
 print("================== TRIMMING SEQUENCES ==================")
 for _sq in sequences:
     _fwd_trim, _fwd_ind = trim_seq(_sq["seqs"][0], _sq["quals"][0], _sq["names"][0], True,
-                                   30, -120)    # qual=30 == 99.9% accuracy
+                                   20, -100)    # qual=20 == 99% accuracy
     _rev_trim, _rev_ind = trim_seq(_sq["seqs"][1], _sq["quals"][1], _sq["names"][1], False,
-                                   30, -120)
+                                   20, -100)
     _sq["trimmed_seqs"] = (_fwd_trim, _rev_trim)
     _sq["trim_indices"] = (_fwd_ind,  _rev_ind)
 write_fasta(sequences, TRIMMED_FP, "trimmed")
@@ -321,27 +321,27 @@ for _sq in sequences:
                                    2, -7, -7)   # arbitrary scores, seems to work
 write_fasta(sequences, MERGED_FP, "merged")
 
-# BLAST merged reads and parse output
-print("================== BLASTING SEQUENCES ==================")
-blast_records = blast_seqs(MERGED_FP)
-_k = 0.0
-for _record in blast_records:
-    if _record.query.endswith("(unmerged)"):
-        if "blast" not in sequences[int(_k)]:
-            sequences[int(_k)]["blast"] = []
-            sequences[int(_k)]["blast_e"] = []
-        sequences[int(_k)]["blast"].append(_record.descriptions[0].title)
-        sequences[int(_k)]["blast_e"].append(_record.descriptions[0].e)
-        _k += 0.5
-    else:
-        sequences[int(_k)]["blast"] = _record.descriptions[0].title
-        sequences[int(_k)]["blast_e"] = _record.descriptions[0].e
-        _k += 1
-for _sq in sequences:
-    print("{} ({}merged)".format(
-            ", ".join(_sq["names"]), "un" if _sq["merged_seq"] is None else ""))
-    if type(_sq["blast"]) is list:
-        print("BLAST fwd: {} (e={:.1f})"  .format(_sq["blast"][0], _sq["blast_e"][0]))
-        print("BLAST rev: {} (e={:.1f})\n".format(_sq["blast"][1], _sq["blast_e"][1]))
-    else:
-        print("BLAST: {} (e={:.1f})\n".format(_sq["blast"], _sq["blast_e"]))
+## BLAST merged reads and parse output
+#print("================== BLASTING SEQUENCES ==================")
+#blast_records = blast_seqs(MERGED_FP)
+#_k = 0.0
+#for _record in blast_records:
+#    if _record.query.endswith("(unmerged)"):
+#        if "blast" not in sequences[int(_k)]:
+#            sequences[int(_k)]["blast"] = []
+#            sequences[int(_k)]["blast_e"] = []
+#        sequences[int(_k)]["blast"].append(_record.descriptions[0].title)
+#        sequences[int(_k)]["blast_e"].append(_record.descriptions[0].e)
+#        _k += 0.5
+#    else:
+#        sequences[int(_k)]["blast"] = _record.descriptions[0].title
+#        sequences[int(_k)]["blast_e"] = _record.descriptions[0].e
+#        _k += 1
+#for _sq in sequences:
+#    print("{} ({}merged)".format(
+#            ", ".join(_sq["names"]), "un" if _sq["merged_seq"] is None else ""))
+#    if type(_sq["blast"]) is list:
+#        print("BLAST fwd: {} (e={:.1f})"  .format(_sq["blast"][0], _sq["blast_e"][0]))
+#        print("BLAST rev: {} (e={:.1f})\n".format(_sq["blast"][1], _sq["blast_e"][1]))
+#    else:
+#        print("BLAST: {} (e={:.1f})\n".format(_sq["blast"], _sq["blast_e"]))
