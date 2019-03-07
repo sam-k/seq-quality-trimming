@@ -247,7 +247,7 @@ def merge_seqs(fwd, rev, name_fwd=None, name_rev=None, ind_fwd=None, ind_rev=Non
         discarded_nts[1] += len(rev)-max_back_index[1]
     
     overlap_len = max_back_index[0]-max_front_index[0]+1
-    if overlap_len <= discarded_nts[0] or overlap_len <= discarded_nts[1]:
+    if overlap_len <= 2*discarded_nts[0] or overlap_len <= 2*discarded_nts[1]:
         merged_seq = None
         print("Reads may not overlap or be too low quality. ({} nt, lost {} fwd/{} rev)\n".format(
                 max_back_index[0]-max_front_index[0]+1, discarded_nts[0], discarded_nts[1]))
@@ -285,7 +285,8 @@ def write_fasta(sequences, filename, field=""):
             for k in range(2):
                 records.append(SeqRecord(
                         Seq(sq["trimmed_seqs"][k], IUPAC.IUPACAmbiguousDNA()),
-                        id=sq["names"][k], description="({})".format(field)))
+                        id=sq["names"][k], description="({})".format(
+                                "unmerged" if field=="merged" else field)))
         elif field=="merged":
             records.append(SeqRecord(
                     Seq(sq["merged_seq"], IUPAC.IUPACAmbiguousDNA()),
@@ -304,9 +305,9 @@ write_fasta(sequences, IMPORTED_FP, "original")
 print("================== TRIMMING SEQUENCES ==================")
 for _sq in sequences:
     _fwd_trim, _fwd_ind = trim_seq(_sq["seqs"][0], _sq["quals"][0], _sq["names"][0], True,
-                                   20, -100)    # qual=20 == 99% accuracy
+                                   30, -90)    # qual=30 == 99.9% accuracy
     _rev_trim, _rev_ind = trim_seq(_sq["seqs"][1], _sq["quals"][1], _sq["names"][1], False,
-                                   20, -100)
+                                   30, -90)
     _sq["trimmed_seqs"] = (_fwd_trim, _rev_trim)
     _sq["trim_indices"] = (_fwd_ind,  _rev_ind)
 write_fasta(sequences, TRIMMED_FP, "trimmed")
@@ -326,22 +327,27 @@ print("================== BLASTING SEQUENCES ==================")
 blast_records = blast_seqs(MERGED_FP)
 _k = 0.0
 for _record in blast_records:
+    print("{} {}".format(_k, _record.query))
     if _record.query.endswith("(unmerged)"):
         if "blast" not in sequences[int(_k)]:
             sequences[int(_k)]["blast"] = []
             sequences[int(_k)]["blast_e"] = []
-        sequences[int(_k)]["blast"].append(_record.descriptions[0].title)
-        sequences[int(_k)]["blast_e"].append(_record.descriptions[0].e)
+        if len(_record.alignments) > 0:
+            sequences[int(_k)]["blast"].append(_record.descriptions[0].title)
+            sequences[int(_k)]["blast_e"].append(_record.descriptions[0].e)
+        else:
+            sequences[int(_k)]["blast"].append("No matches")
+            sequences[int(_k)]["blast_e"].append(float("-inf"))
         _k += 0.5
     else:
         sequences[int(_k)]["blast"] = _record.descriptions[0].title
         sequences[int(_k)]["blast_e"] = _record.descriptions[0].e
-        _k += 1
+        _k += 1.0
 for _sq in sequences:
     print("{} ({}merged)".format(
             ", ".join(_sq["names"]), "un" if _sq["merged_seq"] is None else ""))
     if type(_sq["blast"]) is list:
-        print("BLAST fwd: {} (e={:.1f})"  .format(_sq["blast"][0], _sq["blast_e"][0]))
+        print("BLAST fwd: {} (e={:.1f})".format(_sq["blast"][0], _sq["blast_e"][0]))
         print("BLAST rev: {} (e={:.1f})\n".format(_sq["blast"][1], _sq["blast_e"][1]))
     else:
         print("BLAST: {} (e={:.1f})\n".format(_sq["blast"], _sq["blast_e"]))
