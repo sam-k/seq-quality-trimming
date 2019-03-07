@@ -327,7 +327,6 @@ print("================== BLASTING SEQUENCES ==================")
 blast_records = blast_seqs(MERGED_FP)
 _k = 0.0
 for _record in blast_records:
-    print("{} {}".format(_k, _record.query))
     if _record.query.endswith("(unmerged)"):
         if "blast" not in sequences[int(_k)]:
             sequences[int(_k)]["blast"] = []
